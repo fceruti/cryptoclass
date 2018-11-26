@@ -5,26 +5,32 @@ public class CompliantNode implements Node {
     final double p_graph;
     final double p_malicious;
     final double p_txDistribution;
-    final double numRounds;
+    final int numRounds;
 
     private boolean[] followees;
     private int[] score;
 
     private Set<Transaction> pendingTransactions;
-    private List<Candidate> candidates;
+    private Set<Candidate> pendingCandidates;
 
     public CompliantNode(double p_graph, double p_malicious, double p_txDistribution, int numRounds) {
         this.p_graph = p_graph;
         this.p_malicious = p_malicious;
         this.p_txDistribution = p_txDistribution;
         this.numRounds = numRounds;
-        this.candidates = new ArrayList<Candidate>();
+        this.pendingCandidates = new HashSet<Candidate>();
     }
 
     public void setFollowees(boolean[] followees) {
         this.followees = followees;
         this.score = new int[followees.length];
-        Arrays.fill(this.score, 0);
+        for(int i = 0; i < followees.length ; i++) {
+            if(followees[i] == true){
+                this.score[i] = 100;
+            } else {
+                this.score[i] = 0;
+            }
+        }
     }
 
     public void setPendingTransaction(Set<Transaction> pendingTransactions) {
@@ -36,23 +42,34 @@ public class CompliantNode implements Node {
     }
 
     public void receiveFromFollowees(Set<Candidate> candidates) {
+
         for (Candidate candidate : candidates) {
-            if (pendingTransactions.contains(candidate.tx)) {
+            if (pendingTransactions.contains(candidate.tx))
                 this.score[candidate.sender] += 1;
-            } else {
-                this.candidates.add(candidate);
-            }
         }
 
-        // TODO: add to probable
-        List<Candidate> found = new ArrayList<Candidate>();
-        for (Candidate candidate : this.candidates) {
-            if (this.score[candidate.sender] > 10) {
+        this.pendingCandidates.addAll(candidates);
+
+        int nFollowees = 0;
+        for(boolean follows: this.followees) {
+            if (follows == true)
+                nFollowees += 1;
+        }
+
+        int nMaliciousNodes = (int) Math.ceil(nFollowees * this.p_malicious);
+        int nCompliantNodes = nFollowees - nMaliciousNodes;
+        int validTxCount = (int) Math.floor(nCompliantNodes * this.p_txDistribution);
+        int threashold = Math.max(nMaliciousNodes, validTxCount);
+        threashold = Math.min(threashold, (int) Math.ceil(this.numRounds * 0.7));
+
+        Set<Candidate> trustedCandidates = new HashSet<Candidate>();
+        for (Candidate candidate : this.pendingCandidates) {
+            if (this.score[candidate.sender] >= threashold) {
                 this.score[candidate.sender] += 1;
+                trustedCandidates.add(candidate);
                 this.pendingTransactions.add(candidate.tx);
-                found.add(candidate);
             }
         }
-        this.candidates.removeAll(found);
+        this.pendingCandidates.removeAll(trustedCandidates);
     }
 }
